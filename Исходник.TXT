@@ -1,0 +1,212 @@
+Структура БД----
+
+Таблицы:
+CREATE TABLE clients (
+    client_id INT PRIMARY KEY,
+    client_name VARCHAR(50),
+    phone_number VARCHAR(15)
+);
+
+CREATE TABLE gadgets (
+    gadget_id INT PRIMARY KEY,
+    gadget_name VARCHAR(50)
+);
+
+CREATE TABLE orders (
+    order_id INT PRIMARY KEY,
+    client_id INT,
+    gadget_id INT,
+    issue VARCHAR(255),
+    status VARCHAR(50),
+    price DECIMAL(18, 0),
+    FOREIGN KEY (client_id) REFERENCES clients(client_id),
+    FOREIGN KEY (gadget_id) REFERENCES gadgets(gadget_id)
+);
+
+CREATE TABLE parts (
+    part_id INT PRIMARY KEY,
+    part_name VARCHAR(50),
+    part_for_gadget INT,
+    quantity_available INT,
+    FOREIGN KEY (part_for_gadget) REFERENCES gadgets(gadget_id)
+);
+
+CREATE TABLE repair_status (
+    status_id INT PRIMARY KEY,
+    status_name VARCHAR(50)
+);
+
+CREATE TABLE invoices (
+    invoice_id INT PRIMARY KEY,
+    order_id INT,
+    invoice_date DATE,
+    total_amount DECIMAL(18, 2),
+    FOREIGN KEY (order_id) REFERENCES orders(order_id)
+);
+
+CREATE TABLE payments (
+    payment_id INT PRIMARY KEY,
+    invoice_id INT,
+    payment_date DATE,
+    payment_amount DECIMAL(18, 2),
+    FOREIGN KEY (invoice_id) REFERENCES invoices(invoice_id)
+);
+
+
+-- Данные для таблицы clients
+INSERT INTO clients (client_id, client_name, phone_number) VALUES
+(1, 'Александр Иванов', '123-456-7890'),
+(2, 'Екатерина Петрова', '987-654-3210'),
+(3, 'Дмитрий Смирнов', '555-123-4567'),
+(4, 'Ольга Козлова', '777-888-9999'),
+(5, 'Сергей Федоров', '444-333-2222'),
+(6, 'Наталья Васильева', '666-555-4444'),
+(7, 'Иван Сидоров', '111-222-3333'),
+(8, 'Мария Николаева', '999-888-7777'),
+(9, 'Павел Кузнецов', '222-333-4444'),
+(10, 'Анна Соколова', '888-777-6666');
+
+-- Данные для таблицы gadgets
+INSERT INTO gadgets (gadget_id, gadget_name) VALUES
+(1, 'Смартфон'),
+(2, 'Ноутбук'),
+(3, 'Планшет'),
+(4, 'Умные часы'),
+(5, 'Фотоаппарат'),
+(6, 'Наушники'),
+(7, 'Игровая консоль'),
+(8, 'Электрический чайник'),
+(9, 'Холодильник'),
+(10, 'Стиральная машина');
+
+-- Данные для таблицы orders
+INSERT INTO orders (order_id, client_id, gadget_id, issue, status) VALUES
+(1, 1, 3, 'Не включается', 'В обработке'),
+(2, 4, 6, 'Не работает правое наушник', 'В ремонте'),
+(3, 2, 1, 'Низкий заряд батареи', 'Завершен'),
+(4, 3, 4, 'Не показывает время', 'В процессе'),
+(5, 7, 2, 'Не загружается Windows', 'В обработке'),
+(6, 5, 7, 'Плохое качество изображения', 'В ремонте'),
+(7, 8, 8, 'Протекает', 'В процессе'),
+(8, 6, 9, 'Не морозит', 'В обработке'),
+(9, 10, 10, 'Не отжимает белье', 'Завершен'),
+(10, 9, 5, 'Ошибка объектива', 'В ремонте');
+
+-- Данные для таблицы parts
+INSERT INTO parts (part_id, part_name, part_for_gadget, quantity_available) VALUES
+(1, 'Аккумулятор', 1, 50),
+(2, 'Клавиатура', 2, 30),
+(3, 'Дисплей', 3, 20),
+(4, 'Стекло', 4, 40),
+(5, 'Зарядное устройство', 5, 25),
+(6, 'Динамик', 6, 35),
+(7, 'Геймпад', 7, 15),
+(8, 'Нагревательный элемент', 8, 10),
+(9, 'Мотор', 9, 5),
+(10, 'Сливной насос', 10, 8);
+
+-- Данные для таблицы repair_status
+INSERT INTO repair_status (status_id, status_name) VALUES
+(1, 'В обработке'),
+(2, 'В ремонте'),
+(3, 'В процессе'),
+(4, 'Завершен');
+
+Триггеры:
+-- Создание триггера на ограничение
+CREATE TRIGGER trg_PreventClientDeletion
+ON clients
+INSTEAD OF DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (SELECT 1 FROM deleted d JOIN orders o ON d.client_id = o.client_id)
+    BEGIN
+        RAISERROR ('Cannot delete client with active orders', 16, 1);
+    END
+    ELSE
+    BEGIN
+        DELETE c
+        FROM clients c
+        JOIN deleted d ON c.client_id = d.client_id;
+    END
+END;
+
+-- Создание триггера на каскадное удаление
+CREATE TRIGGER trg_CascadeDeleteParts
+ON gadgets
+AFTER DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DELETE p
+    FROM parts p
+    JOIN deleted d ON p.part_for_gadget = d.gadget_id;
+END;
+
+Процедуры:
+-- Хранимые процедуры возвращающие данные
+CREATE PROCEDURE GetOrdersByClientAndStatus(
+    @client_name VARCHAR(50),
+    @gadget_status VARCHAR(50)
+)
+AS
+BEGIN
+    SELECT o.order_id, c.client_name, g.gadget_name, o.issue, o.status
+    FROM orders o
+    JOIN clients c ON o.client_id = c.client_id
+    JOIN gadgets g ON o.gadget_id = g.gadget_id
+    WHERE c.client_name = @client_name AND o.status = @gadget_status;
+END;
+
+CREATE PROCEDURE GetPartsByGadgetAndQuantity(
+    @gadget_id INT,
+    @min_quantity INT,
+    @max_quantity INT
+)
+AS
+BEGIN
+    SELECT part_id, part_name, quantity_available
+    FROM parts
+    WHERE part_for_gadget = @gadget_id AND quantity_available BETWEEN @min_quantity AND @max_quantity;
+END;
+
+-- Хранимые процедуры не возвращающие данные
+CREATE PROCEDURE InsertNewClient(
+    @client_name VARCHAR(50),
+    @phone_number VARCHAR(15)
+)
+AS
+BEGIN
+    INSERT INTO clients (client_name, phone_number)
+    VALUES (@client_name, @phone_number);
+END;
+
+CREATE PROCEDURE UpdateOrderStatus(
+    @order_id INT,
+    @new_status VARCHAR(50)
+)
+AS
+BEGIN
+    UPDATE orders
+    SET status = @new_status
+    WHERE order_id = @order_id;
+END;
+
+CREATE PROCEDURE DeletePart(
+    @part_id INT
+)
+AS
+BEGIN
+    DELETE FROM parts
+    WHERE part_id = @part_id;
+END;
+
+CREATE PROCEDURE ArchiveOldOrders()
+AS
+BEGIN
+    -- Логика архивирования старых заказов здесь
+END;
+
